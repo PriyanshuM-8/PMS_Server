@@ -5,7 +5,7 @@ import Pump from "../models/pump.model.js";
 import Mechanic from "../models/mechanic.model.js";
 import Customer from "../models/customer.model.js";
 import { sendOTPEmail, sendNewRegistrationAlert } from "../utils/nodemailer.js";
-import { sendOTP } from "../utils/twilio.js";
+import { sendOTP as twilioSendOTP, verifyOTP as twilioVerifyOTP } from "../utils/twilio.js";
 
 const generateToken = (payload) =>
   jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || "7d" });
@@ -20,7 +20,7 @@ const userResponse = (user) => ({
   activeRole: user.activeRole,
 });
 
-// ─── Customer Register ────────────────────────────────────────────────────────
+// Customer Register
 export const registerCustomer = async ({ name, email, password, phone, addressFull, lng, lat }) => {
   if (!name || !email || !password || !phone || !addressFull)
     throw new Error("name, email, password, phone, addressFull required");
@@ -49,7 +49,7 @@ export const registerCustomer = async ({ name, email, password, phone, addressFu
   return { token, user: userResponse(user) };
 };
 
-// ─── PumpAdmin Register ───────────────────────────────────────────────────────
+// PumpAdmin Register
 export const registerPumpAdmin = async ({ name, email, password, phone, pumpName, address, pumpType, licenseNumber, lng, lat }, files) => {
   if (!name || !email || !password || !phone || !pumpName || !address || !licenseNumber)
     throw new Error("All fields are required");
@@ -90,7 +90,7 @@ export const registerPumpAdmin = async ({ name, email, password, phone, pumpName
   return { message: "Registration successful. Awaiting SuperAdmin approval." };
 };
 
-// ─── Mechanic Register ────────────────────────────────────────────────────────
+// Mechanic Register
 export const registerMechanicRole = async ({ email, password, phone, name, skills, experience, address, lng, lat }, files) => {
   if (!phone || !name) throw new Error("name and phone required");
   if (!lng || !lat) throw new Error("Location (lng, lat) required for mechanic");
@@ -146,17 +146,15 @@ export const registerMechanicRole = async ({ email, password, phone, name, skill
   return { message: "Mechanic registered. Nearby pumps will review your profile." };
 };
 
-// ─── PumpAdmin Login — email + password → OTP ────────────────────────────────
+// PumpAdmin Login
 export const pumpAdminDirectLogin = async ({ email, password }) => {
   const user = await User.findOne({ email });
   if (!user || !user.roles.includes("pumpAdmin"))
     throw new Error("Email or password is incorrect");
-  if (!user.isActive)
-    throw new Error("Account is deactivated. Contact support.");
+  if (!user.isActive) throw new Error("Account is deactivated. Contact support.");
 
   const isMatch = await bcrypt.compare(password, user.password);
-  if (!isMatch)
-    throw new Error("Email or password is incorrect");
+  if (!isMatch) throw new Error("Email or password is incorrect");
 
   const pump = await Pump.findOne({ owner: user._id });
   if (pump?.approvalStatus === "pending") throw new Error("Your pump is pending SuperAdmin approval");
@@ -169,6 +167,7 @@ export const pumpAdminDirectLogin = async ({ email, password }) => {
   return { message: "OTP sent to your email.", identifier: email };
 };
 
+// Email Login
 export const loginWithEmail = async ({ email, password }) => {
   const user = await User.findOne({ email });
   if (!user) throw new Error("Invalid credentials");
@@ -177,7 +176,6 @@ export const loginWithEmail = async ({ email, password }) => {
   const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) throw new Error("Invalid credentials");
 
-  // superAdmin — direct JWT
   if (user.roles.includes("superAdmin")) {
     const token = generateToken({ id: user._id, roles: user.roles, activeRole: "superAdmin" });
     return { token, user: userResponse({ ...user.toObject(), activeRole: "superAdmin" }), otpMethod: "none" };
@@ -196,12 +194,11 @@ export const loginWithEmail = async ({ email, password }) => {
   return { message: "OTP sent to your email.", otpMethod: "email", identifier: email, roles: user.roles };
 };
 
-// ─── Login via Phone Number → SMS OTP (Twilio) ───────────────────────────────
+// Phone Login — Twilio Verify SMS OTP
 export const loginWithPhone = async ({ phone }) => {
   const cleaned = phone.toString().replace(/\D/g, "");
   if (!/^[6-9]\d{9}$/.test(cleaned)) throw new Error("Invalid phone number");
 
-  // Phone se user dhundo — User model ya Customer model mein
   const customer = await Customer.findOne({ phone: cleaned, isDeleted: false, isBlocked: false });
   if (!customer) throw new Error("This mobile number is not registered. Please register first or use email login.");
 
@@ -209,40 +206,42 @@ export const loginWithPhone = async ({ phone }) => {
   if (!user) throw new Error("Account not found. Please register first.");
   if (!user.isActive) throw new Error("Account is deactivated. Contact support.");
 
-  const otp = generateOTP();
-  await User.findByIdAndUpdate(user._id, { otp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
-
-  const smsResult = await sendOTP(`+91${cleaned}`, otp);
+  // Twilio Verify se SMS OTP bhejo
+  await twilioSendOTP(cleaned);
 
   return {
-    message: smsResult.devMode
-      ? `SMS not sent (Trial account). OTP printed in server console.`
-      : `OTP sent to +91${cleaned}`,
+    message: `OTP sent to +91${cleaned}`,
     otpMethod: "sms",
     identifier: cleaned,
-    ...(smsResult.devMode && { devOtp: otp }),
   };
 };
 
-// ─── Verify OTP — works for both email & phone login ─────────────────────────
+// Verify OTP — email (DB check) or sms (Twilio Verify check)
 export const verifyOTP = async ({ identifier, otp, method }) => {
   let user;
 
   if (method === "sms") {
-    // Phone se user dhundo
     const cleaned = identifier.toString().replace(/\D/g, "");
+
+    // Twilio Verify se check karo
+    const approved = await twilioVerifyOTP(cleaned, otp.toString());
+    if (!approved) throw new Error("Invalid OTP");
+
     const customer = await Customer.findOne({ phone: cleaned, isDeleted: false });
     if (!customer) throw new Error("Account not found");
     user = await User.findById(customer.user);
   } else {
-    // Email se user dhundo
+    // Email OTP — DB se check karo
     user = await User.findOne({ email: identifier });
+    if (!user) throw new Error("User not found");
+    if (!user.otp || !user.otpExpiry) throw new Error("No OTP requested. Please login again.");
+    if (new Date() > user.otpExpiry) throw new Error("OTP has expired. Please login again.");
+    if (user.otp !== otp.toString()) throw new Error("Invalid OTP");
+    await User.findByIdAndUpdate(user._id, { otp: null, otpExpiry: null });
   }
 
   if (!user) throw new Error("User not found");
-  if (!user.otp || !user.otpExpiry) throw new Error("No OTP requested. Please login again.");
-  if (new Date() > user.otpExpiry) throw new Error("OTP has expired. Please login again.");
-  if (user.otp !== otp.toString()) throw new Error("Invalid OTP");
+  if (!user.isActive) throw new Error("Account is deactivated");
 
   if (user.activeRole === "pumpAdmin") {
     const pump = await Pump.findOne({ owner: user._id });
@@ -250,9 +249,6 @@ export const verifyOTP = async ({ identifier, otp, method }) => {
     if (pump?.approvalStatus === "rejected") throw new Error("Your pump has been rejected");
   }
 
-  await User.findByIdAndUpdate(user._id, { otp: null, otpExpiry: null });
-
-  // pumpAdmin ke liye activeRole fix karo
   if (user.roles.includes("pumpAdmin") && user.activeRole !== "pumpAdmin") {
     user.activeRole = "pumpAdmin";
     await user.save();
@@ -262,10 +258,9 @@ export const verifyOTP = async ({ identifier, otp, method }) => {
   return { token, user: userResponse(user) };
 };
 
-// ─── Legacy loginUser (kept for other apps) ───────────────────────────────────
 export const loginUser = loginWithEmail;
 
-// ─── Switch Active Role ───────────────────────────────────────────────────────
+// Switch Role
 export const switchRole = async (userId, newRole) => {
   const user = await User.findById(userId);
   if (!user) throw new Error("User not found");

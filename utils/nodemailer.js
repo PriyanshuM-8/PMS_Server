@@ -16,15 +16,23 @@ const transporter = nodemailer.createTransport({
 export const sendOTPEmail = async (userEmail, userName, otp) => {
   try {
     await transporter.sendMail({
-      from: `"PMS App" <${process.env.EMAIL_USER}>`,
+      from: `"PetroCareX" <${process.env.EMAIL_USER}>`,
       to: userEmail,
-      subject: "Your Login OTP",
+      subject: "Your PetroCareX Login OTP",
       html: `
-        <h2>Hello ${userName},</h2>
-        <p>Your one-time login OTP is:</p>
-        <h1 style="letter-spacing: 8px; color: #e74c3c;">${otp}</h1>
-        <p>This OTP is valid for <strong>10 minutes</strong>. Do not share it with anyone.</p>
-        <br/><small>Team PMS</small>
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;border:1px solid #f0f0f0;border-radius:12px">
+          <h2 style="color:#e53e3e;margin-bottom:4px">PetroCareX</h2>
+          <p style="color:#666;font-size:13px;margin-top:0">Smart Petrol Pump Management</p>
+          <hr style="border:none;border-top:1px solid #f0f0f0;margin:16px 0">
+          <p style="color:#333;font-size:14px">Hello <strong>${userName}</strong>,</p>
+          <p style="color:#333;font-size:14px">Your one-time login OTP is:</p>
+          <div style="background:#fff5f5;border:2px dashed #e53e3e;border-radius:10px;padding:20px;text-align:center;margin:20px 0">
+            <h1 style="letter-spacing:12px;color:#e53e3e;margin:0;font-size:36px">${otp}</h1>
+          </div>
+          <p style="color:#666;font-size:13px">Valid for <strong>10 minutes</strong>. Do not share this OTP with anyone.</p>
+          <hr style="border:none;border-top:1px solid #f0f0f0;margin:16px 0">
+          <p style="color:#999;font-size:11px">Team PetroCareX &mdash; Fuel delivered to your doorstep</p>
+        </div>
       `,
     });
   } catch (err) {
