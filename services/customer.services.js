@@ -1,6 +1,5 @@
 import User from "../models/user.model.js";
 import Customer from "../models/customer.model.js";
-import { sendOTP } from "../utils/twilio.js";
 
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -78,9 +77,7 @@ export const requestPhoneChange = async (userId, oldPhone, newPhone) => {
 
   await User.findByIdAndUpdate(userId, { otp, otpExpiry, pendingPhone: newCleaned });
 
-  await sendOTP(`+91${newCleaned}`, otp);
-
-  return { message: `OTP sent to +91${newCleaned}` };
+  return { message: `Demo OTP generated for new mobile number: ${otp}`, devOtp: otp };
 };
 
 // ─── Phone Change Verify ──────────────────────────────────────────────────────

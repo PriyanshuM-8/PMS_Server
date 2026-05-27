@@ -15,7 +15,6 @@ import Pump from "../models/pump.model.js";
 import Booking from "../models/booking.model.js";
 import Customer from "../models/customer.model.js";
 import Mechanic from "../models/mechanic.model.js";
-import { initiateCall } from "../utils/twilio.js";
 
 const router = Router();
 
@@ -55,11 +54,7 @@ router.post("/my/:id/call", protect, authorize("customer"), async (req, res) => 
     if (!booking.mechanic?.phone)
       return res.status(400).json({ success: false, message: "Mechanic contact not available" });
 
-    const result = await initiateCall(customer.phone, booking.mechanic.phone);
-    if (result.devMode) {
-      return res.json({ success: true, devMode: true, maskedNumber: process.env.TWILIO_PHONE || "N/A" });
-    }
-    res.json({ success: true, maskedNumber: process.env.TWILIO_PHONE });
+    res.json({ success: true, devMode: true, maskedNumber: booking.mechanic.phone });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

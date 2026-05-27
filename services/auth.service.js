@@ -5,8 +5,6 @@ import Pump from "../models/pump.model.js";
 import Mechanic from "../models/mechanic.model.js";
 import Customer from "../models/customer.model.js";
 import { sendOTPEmail, sendNewRegistrationAlert } from "../utils/nodemailer.js";
-import { sendOTP as twilioSendOTP, verifyOTP as twilioVerifyOTP } from "../utils/twilio.js";
-
 const generateToken = (payload) =>
   jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || "7d" });
 
@@ -235,12 +233,7 @@ export const forgotPasswordService = async ({ email, phone }) => {
   } else if (method === "sms") {
     const demoOtp = generateOTP();
     await User.findByIdAndUpdate(user._id, { otp: demoOtp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
-    
-    if (user.email && !user.email.endsWith("@mechanic.local")) {
-      await sendOTPEmail(user.email, user.name, demoOtp).catch(console.error);
-    }
-    
-    return { message: `Demo OTP generated. Check email or use OTP: ${demoOtp}`, identifier, method, devOtp: demoOtp };
+    return { message: "Demo OTP generated for mobile number", identifier, method, devOtp: demoOtp };
   }
 };
 
@@ -363,13 +356,9 @@ export const loginWithPhone = async ({ phone }) => {
     
   if (userToUpdate) {
     await User.findByIdAndUpdate(userToUpdate._id, { otp: demoOtp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
-    
-    if (userToUpdate.email && !userToUpdate.email.endsWith("@mechanic.local")) {
-      await sendOTPEmail(userToUpdate.email, userToUpdate.name, demoOtp).catch(console.error);
-    }
   }
 
-  return { message: `Demo OTP generated. Check email or use OTP: ${demoOtp}`, otpMethod: "sms", identifier: cleaned, devOtp: demoOtp };
+  return { message: "Demo OTP generated for mobile number", otpMethod: "sms", identifier: cleaned, devOtp: demoOtp };
 };
 
 // Verify OTP — email (DB check) or sms (Twilio Verify check)
