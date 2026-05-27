@@ -233,15 +233,14 @@ export const forgotPasswordService = async ({ email, phone }) => {
     await sendOTPEmail(user.email, user.name, otp);
     return { message: "OTP sent to your email.", identifier, method };
   } else if (method === "sms") {
-    const isDev = process.env.NODE_ENV !== "production" || process.env.DEMO_MODE === "true";
-    if (isDev) {
-      const demoOtp = generateOTP();
-      await User.findByIdAndUpdate(user._id, { otp: demoOtp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
-      return { message: "Demo OTP generated", identifier, method, devOtp: demoOtp };
+    const demoOtp = generateOTP();
+    await User.findByIdAndUpdate(user._id, { otp: demoOtp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
+    
+    if (user.email && !user.email.endsWith("@mechanic.local")) {
+      await sendOTPEmail(user.email, user.name, demoOtp).catch(console.error);
     }
-    await twilioSendOTP(identifier);
-    await User.findByIdAndUpdate(user._id, { otp: "twilio", otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
-    return { message: `OTP sent to +91${identifier}`, identifier, method };
+    
+    return { message: `Demo OTP generated. Check email or use OTP: ${demoOtp}`, identifier, method, devOtp: demoOtp };
   }
 };
 
@@ -279,13 +278,7 @@ export const resetPasswordService = async ({ email, phone, otp, newPassword }) =
   if (method === "email") {
     if (user.otp !== otp.toString()) throw new Error("Invalid OTP");
   } else if (method === "sms") {
-    const isDev = process.env.NODE_ENV !== "production" || process.env.DEMO_MODE === "true";
-    if (isDev) {
-      if (user.otp !== otp.toString()) throw new Error("Invalid OTP");
-    } else {
-      const approved = await twilioVerifyOTP(identifier, otp.toString());
-      if (!approved) throw new Error("Invalid OTP");
-    }
+    if (user.otp !== otp.toString()) throw new Error("Invalid OTP");
   }
 
   const hashed = await bcrypt.hash(newPassword, 10);
@@ -363,22 +356,20 @@ export const loginWithPhone = async ({ phone }) => {
     if (!user.isActive) throw new Error("Account is deactivated. Contact support.");
   }
 
-  // Demo mode — Twilio nahi hai toh DB OTP use karo
-  const isDev = process.env.NODE_ENV !== "production" || process.env.DEMO_MODE === "true";
-  if (isDev) {
-    const demoOtp = generateOTP();
-    // User me store karo
-    const userToUpdate = mechanic
-      ? await User.findById(mechanic.user)
-      : await User.findOne({ phone: cleaned });
-    if (userToUpdate) {
-      await User.findByIdAndUpdate(userToUpdate._id, { otp: demoOtp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
+  const demoOtp = generateOTP();
+  const userToUpdate = mechanic
+    ? await User.findById(mechanic.user)
+    : await User.findOne({ phone: cleaned });
+    
+  if (userToUpdate) {
+    await User.findByIdAndUpdate(userToUpdate._id, { otp: demoOtp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
+    
+    if (userToUpdate.email && !userToUpdate.email.endsWith("@mechanic.local")) {
+      await sendOTPEmail(userToUpdate.email, userToUpdate.name, demoOtp).catch(console.error);
     }
-    return { message: `Demo OTP generated`, otpMethod: "sms", identifier: cleaned, devOtp: demoOtp };
   }
 
-  await twilioSendOTP(cleaned);
-  return { message: `OTP sent to +91${cleaned}`, otpMethod: "sms", identifier: cleaned };
+  return { message: `Demo OTP generated. Check email or use OTP: ${demoOtp}`, otpMethod: "sms", identifier: cleaned, devOtp: demoOtp };
 };
 
 // Verify OTP — email (DB check) or sms (Twilio Verify check)
@@ -388,31 +379,16 @@ export const verifyOTP = async ({ identifier, otp, method }) => {
   if (method === "sms") {
     const cleaned = identifier.toString().replace(/\D/g, "");
 
-    // Demo mode — DB OTP check
-    const isDev = process.env.NODE_ENV !== "production" || process.env.DEMO_MODE === "true";
-    if (isDev) {
-      const mechanic = await Mechanic.findOne({ phone: cleaned, isDeleted: false });
-      const userToCheck = mechanic
-        ? await User.findById(mechanic.user)
-        : await User.findOne({ phone: cleaned });
-      if (!userToCheck) throw new Error("Account not found");
-      if (!userToCheck.otp || !userToCheck.otpExpiry) throw new Error("No OTP requested. Please try again.");
-      if (new Date() > userToCheck.otpExpiry) throw new Error("OTP expired. Please try again.");
-      if (userToCheck.otp !== otp.toString()) throw new Error("Invalid OTP");
-      await User.findByIdAndUpdate(userToCheck._id, { otp: null, otpExpiry: null });
-      user = userToCheck;
-    } else {
-      const approved = await twilioVerifyOTP(cleaned, otp.toString());
-      if (!approved) throw new Error("Invalid OTP");
-      const mechanic = await Mechanic.findOne({ phone: cleaned, isDeleted: false });
-      if (mechanic?.user) {
-        user = await User.findById(mechanic.user);
-      } else {
-        const customer = await Customer.findOne({ phone: cleaned, isDeleted: false });
-        if (!customer) throw new Error("Account not found");
-        user = await User.findById(customer.user);
-      }
-    }
+    const mechanic = await Mechanic.findOne({ phone: cleaned, isDeleted: false });
+    const userToCheck = mechanic
+      ? await User.findById(mechanic.user)
+      : await User.findOne({ phone: cleaned });
+    if (!userToCheck) throw new Error("Account not found");
+    if (!userToCheck.otp || !userToCheck.otpExpiry) throw new Error("No OTP requested. Please try again.");
+    if (new Date() > userToCheck.otpExpiry) throw new Error("OTP expired. Please try again.");
+    if (userToCheck.otp !== otp.toString()) throw new Error("Invalid OTP");
+    await User.findByIdAndUpdate(userToCheck._id, { otp: null, otpExpiry: null });
+    user = userToCheck;
   } else {
     // Email OTP — DB se check karo
     user = await User.findOne({ email: identifier });
