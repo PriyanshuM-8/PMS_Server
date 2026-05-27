@@ -81,9 +81,9 @@ export const registerPumpAdmin = async ({ name, email, password, phone, pumpName
     pumpType: pumpType || [],
     licenseNumber,
     approvalStatus: "pending",
-    profileImage: files?.profileImage?.[0]?.path || "",
-    aadharPhoto: files?.aadharPhoto?.[0]?.path || "",
-    ownerIdProof: files?.ownerIdProof?.[0]?.path || "",
+    profileImage: files?.profileImage?.[0]?.secure_url || files?.profileImage?.[0]?.path || "",
+    aadharPhoto: files?.aadharPhoto?.[0]?.secure_url || files?.aadharPhoto?.[0]?.path || "",
+    ownerIdProof: files?.ownerIdProof?.[0]?.secure_url || files?.ownerIdProof?.[0]?.path || "",
   });
 
   await sendNewRegistrationAlert(name, email, pumpName);
@@ -91,65 +91,84 @@ export const registerPumpAdmin = async ({ name, email, password, phone, pumpName
 };
 
 // Mechanic Register
-export const registerMechanicRole = async ({ email, password, phone, name, skills, experience, address, lng, lat }, files) => {
-  if (!phone || !name) throw new Error("name and phone required");
-  if (!lng || !lat) throw new Error("Location (lng, lat) required for mechanic");
+export const registerMechanicRole = async ({ phone, name, upiId, skills, experience, address, lng, lat }, files) => {
+  if (!phone || !name || !upiId) throw new Error("name, phone, and upiId required");
 
-  const existing = await User.findOne({ email });
-  let user;
-  if (existing) {
-    if (existing.roles.includes("mechanic")) throw new Error("Already registered as mechanic");
-    if (!existing.roles.includes("customer")) existing.roles.push("customer");
-    existing.roles.push("mechanic");
-    await existing.save();
-    user = existing;
-  } else {
-    if (!email || !password) throw new Error("email and password required");
-    const hashed = await bcrypt.hash(password, 10);
+  const cleaned = phone.toString().replace(/\D/g, "");
+  if (!/^[6-9]\d{9}$/.test(cleaned)) throw new Error("Invalid phone number");
+
+  // Phone se existing mechanic check
+  const existingMechanic = await Mechanic.findOne({ phone: cleaned, isDeleted: false });
+  if (existingMechanic) throw new Error("Mechanic with this phone already registered");
+
+  // User create karo (phone-based login ke liye)
+  let user = await User.findOne({ phone: cleaned });
+  if (!user) {
     user = await User.create({
-      name, email, password: hashed, phone,
-      roles: ["customer", "mechanic"],
-      activeRole: "customer",
+      name,
+      email: `${cleaned}@mechanic.local`,
+      password: await bcrypt.hash(cleaned, 10), // dummy password
+      phone: cleaned,
+      roles: ["mechanic"],
+      activeRole: "mechanic",
     });
-    await Customer.create({ user: user._id, name, phone, address: { full: address || "Address not set" } });
+  } else {
+    if (!user.roles.includes("mechanic")) {
+      user.roles.push("mechanic");
+      await user.save();
+    }
   }
 
-  const mechanic = await Mechanic.create({
-    user: user._id, name, phone, email,
-    skills: skills ? JSON.parse(skills) : [],
+  const validSkills = ["engine", "puncture", "battery", "oil", "all work"];
+  const skillsArray = Array.isArray(skills)
+    ? skills.map(s => s.toLowerCase().trim()).filter(s => validSkills.includes(s))
+    : [];
+
+  const mechanicData = {
+    user: user._id, name, phone: cleaned, upiId,
+    skills: skillsArray,
     experience: experience || 0,
-    address,
+    address: address || "",
     type: "external",
-    location: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] },
-    aadharPhoto: files?.aadharPhoto?.[0]?.path || "",
-    profileImage: files?.profileImage?.[0]?.path || "",
+    aadharPhoto: files?.aadharPhoto?.[0]?.secure_url || files?.aadharPhoto?.[0]?.path || "not-provided",
+    profileImage: files?.profileImage?.[0]?.secure_url || files?.profileImage?.[0]?.path || "",
     pumpConnections: [],
-  });
+    isAvailable: true,
+    status: "active",
+  };
 
-  let nearbyPumps = [];
-  try {
-    nearbyPumps = await Pump.find({
-      approvalStatus: "approved",
-      "address.location": {
-        $near: { $geometry: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] }, $maxDistance: 10000 },
-      },
-    });
-  } catch (_) {}
-
-  if (nearbyPumps.length === 0) nearbyPumps = await Pump.find({ approvalStatus: "approved" });
-
-  if (nearbyPumps.length > 0) {
-    mechanic.pumpConnections = nearbyPumps.map((p) => ({ pump: p._id, status: "pending" }));
-    await mechanic.save();
+  // Location optional — agar diya toh set karo
+  if (lng && lat) {
+    mechanicData.location = { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] };
   }
 
-  return { message: "Mechanic registered. Nearby pumps will review your profile." };
+  const mechanic = await Mechanic.create(mechanicData);
+
+  // Nearby pumps se connect karo (optional)
+  if (lng && lat) {
+    let nearbyPumps = [];
+    try {
+      nearbyPumps = await Pump.find({
+        approvalStatus: "approved",
+        "address.location": {
+          $near: { $geometry: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] }, $maxDistance: 10000 },
+        },
+      });
+    } catch (_) {}
+    if (nearbyPumps.length === 0) nearbyPumps = await Pump.find({ approvalStatus: "approved" });
+    if (nearbyPumps.length > 0) {
+      mechanic.pumpConnections = nearbyPumps.map((p) => ({ pump: p._id, status: "pending" }));
+      await mechanic.save();
+    }
+  }
+
+  return { message: "Registration successful! You can now login with your phone number." };
 };
 
 // PumpAdmin Login
 export const pumpAdminDirectLogin = async ({ email, password }) => {
-  const user = await User.findOne({ email });
-  if (!user || !user.roles.includes("pumpAdmin"))
+  const user = await User.findOne({ email }).select("+password");
+  if (!user || !user.roles.includes("pumpAdmin") || !user.password)
     throw new Error("Email or password is incorrect");
   if (!user.isActive) throw new Error("Account is deactivated. Contact support.");
 
@@ -157,14 +176,121 @@ export const pumpAdminDirectLogin = async ({ email, password }) => {
   if (!isMatch) throw new Error("Email or password is incorrect");
 
   const pump = await Pump.findOne({ owner: user._id });
-  if (pump?.approvalStatus === "pending") throw new Error("Your pump is pending SuperAdmin approval");
-  if (pump?.approvalStatus === "rejected") throw new Error("Your pump registration has been rejected");
+  if (!pump) throw new Error("No pump found for this account");
+  if (pump.approvalStatus === "pending") throw new Error("Your pump is pending SuperAdmin approval");
+  if (pump.approvalStatus === "rejected") throw new Error("Your pump registration has been rejected");
 
   const otp = generateOTP();
   await User.findByIdAndUpdate(user._id, { otp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
   await sendOTPEmail(user.email, user.name, otp);
 
   return { message: "OTP sent to your email.", identifier: email };
+};
+
+// Forgot Password — send OTP
+export const forgotPasswordService = async ({ email, phone }) => {
+  let user;
+  let identifier;
+  let method;
+
+  if (email) {
+    user = await User.findOne({ email });
+    if (!user) throw new Error("No account found with this email");
+    identifier = email;
+    method = "email";
+  } else if (phone) {
+    const cleaned = phone.toString().replace(/\D/g, "");
+    
+    // Check mechanic
+    const mechanic = await Mechanic.findOne({ phone: cleaned, isDeleted: false });
+    if (mechanic) {
+      user = await User.findById(mechanic.user);
+    } else {
+      // Check customer
+      const customer = await Customer.findOne({ phone: cleaned, isDeleted: false });
+      if (customer) {
+        user = await User.findById(customer.user);
+      }
+    }
+    
+    // Fallback to checking User directly just in case
+    if (!user) {
+      user = await User.findOne({ phone: cleaned });
+    }
+
+    if (!user) throw new Error("No account found with this mobile number");
+    identifier = cleaned;
+    method = "sms";
+  } else {
+    throw new Error("Please provide email or phone");
+  }
+
+  if (!user.isActive) throw new Error("Account is deactivated. Contact support.");
+
+  if (method === "email") {
+    const otp = generateOTP();
+    await User.findByIdAndUpdate(user._id, { otp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
+    await sendOTPEmail(user.email, user.name, otp);
+    return { message: "OTP sent to your email.", identifier, method };
+  } else if (method === "sms") {
+    const isDev = process.env.NODE_ENV !== "production" || process.env.DEMO_MODE === "true";
+    if (isDev) {
+      const demoOtp = generateOTP();
+      await User.findByIdAndUpdate(user._id, { otp: demoOtp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
+      return { message: "Demo OTP generated", identifier, method, devOtp: demoOtp };
+    }
+    await twilioSendOTP(identifier);
+    await User.findByIdAndUpdate(user._id, { otp: "twilio", otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
+    return { message: `OTP sent to +91${identifier}`, identifier, method };
+  }
+};
+
+// Reset Password — verify OTP + set new password
+export const resetPasswordService = async ({ email, phone, otp, newPassword }) => {
+  let user;
+  let identifier;
+  let method;
+
+  if (email) {
+    user = await User.findOne({ email });
+    method = "email";
+  } else if (phone) {
+    const cleaned = phone.toString().replace(/\D/g, "");
+    
+    const mechanic = await Mechanic.findOne({ phone: cleaned, isDeleted: false });
+    if (mechanic) user = await User.findById(mechanic.user);
+    else {
+      const customer = await Customer.findOne({ phone: cleaned, isDeleted: false });
+      if (customer) user = await User.findById(customer.user);
+    }
+    
+    if (!user) {
+      user = await User.findOne({ phone: cleaned });
+    }
+    
+    identifier = cleaned;
+    method = "sms";
+  }
+
+  if (!user) throw new Error("User not found");
+  if (!user.otp || !user.otpExpiry) throw new Error("No OTP requested. Please try again.");
+  if (new Date() > user.otpExpiry) throw new Error("OTP has expired. Please try again.");
+
+  if (method === "email") {
+    if (user.otp !== otp.toString()) throw new Error("Invalid OTP");
+  } else if (method === "sms") {
+    const isDev = process.env.NODE_ENV !== "production" || process.env.DEMO_MODE === "true";
+    if (isDev) {
+      if (user.otp !== otp.toString()) throw new Error("Invalid OTP");
+    } else {
+      const approved = await twilioVerifyOTP(identifier, otp.toString());
+      if (!approved) throw new Error("Invalid OTP");
+    }
+  }
+
+  const hashed = await bcrypt.hash(newPassword, 10);
+  await User.findByIdAndUpdate(user._id, { password: hashed, otp: null, otpExpiry: null });
+  return { message: "Password reset successfully. Please login." };
 };
 
 // Email Login
@@ -181,7 +307,7 @@ export const loginWithEmail = async ({ email, password }) => {
     return { token, user: userResponse({ ...user.toObject(), activeRole: "superAdmin" }), otpMethod: "none" };
   }
 
-  if (user.roles.includes("pumpAdmin") && !user.roles.includes("customer")) {
+  if (user.roles.includes("pumpAdmin")) {
     const pump = await Pump.findOne({ owner: user._id });
     if (pump?.approvalStatus === "pending") throw new Error("Your pump is pending SuperAdmin approval");
     if (pump?.approvalStatus === "rejected") throw new Error("Your pump registration has been rejected");
@@ -199,21 +325,60 @@ export const loginWithPhone = async ({ phone }) => {
   const cleaned = phone.toString().replace(/\D/g, "");
   if (!/^[6-9]\d{9}$/.test(cleaned)) throw new Error("Invalid phone number");
 
-  const customer = await Customer.findOne({ phone: cleaned, isDeleted: false, isBlocked: false });
-  if (!customer) throw new Error("This mobile number is not registered. Please register first or use email login.");
+  // Mechanic check first
+  const mechanic = await Mechanic.findOne({ phone: cleaned, isDeleted: false });
+  if (mechanic) {
+    let user;
+    if (mechanic.user) {
+      user = await User.findById(mechanic.user);
+    }
+    if (!user) {
+      user = await User.findOne({ phone: cleaned });
+      if (!user) {
+        const bcrypt = (await import("bcryptjs")).default;
+        user = await User.create({
+          name: mechanic.name,
+          email: `${cleaned}@mechanic.local`,
+          password: await bcrypt.hash(cleaned, 10),
+          phone: cleaned,
+          roles: ["mechanic"],
+          activeRole: "mechanic",
+        });
+      } else {
+        if (!user.roles.includes("mechanic")) {
+          user.roles.push("mechanic");
+          await user.save();
+        }
+      }
+      mechanic.user = user._id;
+      await mechanic.save();
+    }
+    if (!user.isActive) throw new Error("Account is deactivated. Contact support.");
+  } else {
+    // Customer check
+    const customer = await Customer.findOne({ phone: cleaned, isDeleted: false, isBlocked: false });
+    if (!customer) throw new Error("This mobile number is not registered. Please register first.");
+    const user = await User.findById(customer.user);
+    if (!user) throw new Error("Account not found. Please register first.");
+    if (!user.isActive) throw new Error("Account is deactivated. Contact support.");
+  }
 
-  const user = await User.findById(customer.user);
-  if (!user) throw new Error("Account not found. Please register first.");
-  if (!user.isActive) throw new Error("Account is deactivated. Contact support.");
+  // Demo mode — Twilio nahi hai toh DB OTP use karo
+  const isDev = process.env.NODE_ENV !== "production" || process.env.DEMO_MODE === "true";
+  if (isDev) {
+    const demoOtp = generateOTP();
+    // User me store karo
+    const userToUpdate = mechanic
+      ? await User.findById(mechanic.user)
+      : await User.findOne({ phone: cleaned });
+    if (userToUpdate) {
+      await User.findByIdAndUpdate(userToUpdate._id, { otp: demoOtp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
+    }
+    return { message: `Demo OTP generated`, otpMethod: "sms", identifier: cleaned, devOtp: demoOtp };
+  }
 
-  // Twilio Verify se SMS OTP bhejo
   await twilioSendOTP(cleaned);
-
-  return {
-    message: `OTP sent to +91${cleaned}`,
-    otpMethod: "sms",
-    identifier: cleaned,
-  };
+  return { message: `OTP sent to +91${cleaned}`, otpMethod: "sms", identifier: cleaned };
 };
 
 // Verify OTP — email (DB check) or sms (Twilio Verify check)
@@ -223,13 +388,31 @@ export const verifyOTP = async ({ identifier, otp, method }) => {
   if (method === "sms") {
     const cleaned = identifier.toString().replace(/\D/g, "");
 
-    // Twilio Verify se check karo
-    const approved = await twilioVerifyOTP(cleaned, otp.toString());
-    if (!approved) throw new Error("Invalid OTP");
-
-    const customer = await Customer.findOne({ phone: cleaned, isDeleted: false });
-    if (!customer) throw new Error("Account not found");
-    user = await User.findById(customer.user);
+    // Demo mode — DB OTP check
+    const isDev = process.env.NODE_ENV !== "production" || process.env.DEMO_MODE === "true";
+    if (isDev) {
+      const mechanic = await Mechanic.findOne({ phone: cleaned, isDeleted: false });
+      const userToCheck = mechanic
+        ? await User.findById(mechanic.user)
+        : await User.findOne({ phone: cleaned });
+      if (!userToCheck) throw new Error("Account not found");
+      if (!userToCheck.otp || !userToCheck.otpExpiry) throw new Error("No OTP requested. Please try again.");
+      if (new Date() > userToCheck.otpExpiry) throw new Error("OTP expired. Please try again.");
+      if (userToCheck.otp !== otp.toString()) throw new Error("Invalid OTP");
+      await User.findByIdAndUpdate(userToCheck._id, { otp: null, otpExpiry: null });
+      user = userToCheck;
+    } else {
+      const approved = await twilioVerifyOTP(cleaned, otp.toString());
+      if (!approved) throw new Error("Invalid OTP");
+      const mechanic = await Mechanic.findOne({ phone: cleaned, isDeleted: false });
+      if (mechanic?.user) {
+        user = await User.findById(mechanic.user);
+      } else {
+        const customer = await Customer.findOne({ phone: cleaned, isDeleted: false });
+        if (!customer) throw new Error("Account not found");
+        user = await User.findById(customer.user);
+      }
+    }
   } else {
     // Email OTP — DB se check karo
     user = await User.findOne({ email: identifier });
@@ -242,6 +425,14 @@ export const verifyOTP = async ({ identifier, otp, method }) => {
 
   if (!user) throw new Error("User not found");
   if (!user.isActive) throw new Error("Account is deactivated");
+
+  // Mechanic role check
+  if (user.roles.includes("mechanic") && !user.roles.includes("pumpAdmin")) {
+    user.activeRole = "mechanic";
+    await user.save();
+    const token = generateToken({ id: user._id, roles: user.roles, activeRole: "mechanic" });
+    return { token, user: userResponse(user) };
+  }
 
   if (user.activeRole === "pumpAdmin") {
     const pump = await Pump.findOne({ owner: user._id });

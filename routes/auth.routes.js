@@ -11,6 +11,9 @@ import {
   pumpAdminLoginHandler,
   verifyLoginOTP,
   switchRoleHandler,
+  logoutHandler,
+  forgotPasswordHandler,
+  resetPasswordHandler,
 } from "../controllers/auth.controller.js";
 
 const router = Router();
@@ -35,8 +38,13 @@ router.post("/register/mechanic", mechanicUpload, mechanicRegisterHandler);
 router.post("/login", loginHandler);
 router.post("/login/email", loginWithEmailHandler);
 router.post("/login/phone", loginWithPhoneHandler);
-router.post("/login/pump", pumpAdminLoginHandler);     // pumpAdmin: email+password → OTP
+router.post("/login/pump", pumpAdminLoginHandler);
 router.post("/verify-otp", verifyLoginOTP);
+router.post("/forgot-password", forgotPasswordHandler);
+router.post("/reset-password", resetPasswordHandler);
+
+// ─── Logout ───────────────────────────────────────────────────────────────────
+router.post("/logout", protect, logoutHandler);
 
 // ─── Role Switch ──────────────────────────────────────────────────────────────
 router.post("/switch-role", protect, switchRoleHandler);

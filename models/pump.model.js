@@ -39,11 +39,22 @@ const pumpSchema = new mongoose.Schema(
       default: "active",
     },
 
+    // Wallet & Platform Subscription
+    walletBalance: { type: Number, default: 0 },
+    lastPlatformFeeDeduction: { type: Date, default: null },
+    freeTrialEndsAt: { 
+      type: Date, 
+      default: () => new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) 
+    },
+
     fuelPrices: {
       petrol: { type: Number, default: 0 },
       diesel: { type: Number, default: 0 },
       lastUpdated: { type: Date },
     },
+
+    // UPI for delivery payments — only admin can set, delivery boy cannot edit
+    upiId: { type: String, default: "" },
   },
   { timestamps: true }
 );

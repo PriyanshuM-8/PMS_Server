@@ -9,23 +9,47 @@ const getApprovedPump = async (pumpAdminId) => {
 
 // ─── PumpAdmin: Add Internal Mechanic ────────────────────────────────────────
 export const addInternalMechanic = async (data, pumpAdminId, files) => {
-  const { name, phone, email, skills, experience, address } = data;
+  const { name, phone, email, upiId, skills, experience, address } = data;
 
   const pump = await getApprovedPump(pumpAdminId);
 
   const existing = await Mechanic.findOne({ phone, isDeleted: false });
   if (existing) throw new Error("Mechanic with this phone already exists");
 
+  if (!upiId) throw new Error("UPI ID is required");
+
+  // Auto-create User account for the mechanic to allow login
+  const User = (await import("../models/user.model.js")).default;
+  const bcrypt = (await import("bcryptjs")).default;
+  
+  let user = await User.findOne({ phone });
+  if (!user) {
+    user = await User.create({
+      name,
+      email: email || `${phone}@mechanic.local`,
+      password: await bcrypt.hash(phone.toString(), 10),
+      phone,
+      roles: ["mechanic"],
+      activeRole: "mechanic",
+    });
+  } else {
+    if (!user.roles.includes("mechanic")) {
+      user.roles.push("mechanic");
+      await user.save();
+    }
+  }
+
   const mechanic = await Mechanic.create({
-    name, phone, email,
+    name, phone, email, upiId,
+    user: user._id,
     skills: skills ? (Array.isArray(skills) ? skills : JSON.parse(skills)) : [],
     experience: experience || 0,
     address,
     type: "internal",
     pump: pump._id,
     addedBy: pumpAdminId,
-    aadharPhoto: files?.aadharPhoto?.[0]?.path || "not-provided",
-    profileImage: files?.profileImage?.[0]?.path || "",
+    aadharPhoto: files?.aadharPhoto?.[0]?.secure_url || files?.aadharPhoto?.[0]?.path || "not-provided",
+    profileImage: files?.profileImage?.[0]?.secure_url || files?.profileImage?.[0]?.path || "",
     isVerified: true,
     status: "active",
   });
@@ -107,24 +131,48 @@ export const toggleMechanicStatus = async (mechanicId, pumpAdminId) => {
   return mechanic;
 };
 
-// ─── Booking: Find Available Mechanic ────────────────────────────────────────
-export const findAvailableMechanic = async (pumpId, skill) => {
-  const baseQuery = {
-    isAvailable: true,
-    currentStatus: "idle",
-    status: "active",
-    isDeleted: false,
-    ...(skill && { skills: skill }),
-  };
-
-  const internal = await Mechanic.findOne({ ...baseQuery, type: "internal", pump: pumpId });
-  if (internal) return internal;
-
-  const external = await Mechanic.findOne({
-    ...baseQuery,
-    type: "external",
-    pumpConnections: { $elemMatch: { pump: pumpId, status: "approved" } },
+// PumpAdmin: Toggle Mechanic Availability
+export const toggleMechanicAvailability = async (mechanicId, pumpAdminId) => {
+  const pump = await getApprovedPump(pumpAdminId);
+  const mechanic = await Mechanic.findOne({
+    _id: mechanicId, isDeleted: false,
+    $or: [
+      { type: "internal", pump: pump._id },
+      { type: "external", pumpConnections: { $elemMatch: { pump: pump._id, status: "approved" } } },
+    ],
   });
+  if (!mechanic) throw new Error("Mechanic not found under your pump");
+  mechanic.isAvailable = !mechanic.isAvailable;
+  await mechanic.save();
+  return mechanic;
+};
 
-  return external || null;
+// PumpAdmin: Delete Internal Mechanic
+export const deleteInternalMechanic = async (mechanicId, pumpAdminId) => {
+  const pump = await getApprovedPump(pumpAdminId);
+  const mechanic = await Mechanic.findOne({ _id: mechanicId, type: "internal", pump: pump._id, isDeleted: false });
+  if (!mechanic) throw new Error("Internal mechanic not found under your pump");
+  mechanic.isDeleted = true;
+  await mechanic.save();
+  return { message: "Mechanic removed" };
+};
+
+// PumpAdmin: Get Mechanic Jobs
+export const getMechanicJobHistory = async (mechanicId, pumpAdminId) => {
+  const pump = await getApprovedPump(pumpAdminId);
+  const mechanic = await Mechanic.findOne({
+    _id: mechanicId, isDeleted: false,
+    $or: [
+      { type: "internal", pump: pump._id },
+      { type: "external", pumpConnections: { $elemMatch: { pump: pump._id, status: "approved" } } },
+    ],
+  });
+  if (!mechanic) throw new Error("Mechanic not found");
+
+  const Booking = (await import("../models/booking.model.js")).default;
+  const jobs = await Booking.find({ mechanic: mechanicId, pump: pump._id })
+    .populate("customer", "name phone")
+    .sort({ createdAt: -1 })
+    .limit(20);
+  return { mechanic, jobs };
 };

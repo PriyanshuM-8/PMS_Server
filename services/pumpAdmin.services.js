@@ -3,10 +3,14 @@ import Pump from "../models/pump.model.js";
 import Booking from "../models/booking.model.js";
 import Customer from "../models/customer.model.js";
 import Mechanic from "../models/mechanic.model.js";
+import DeliveryBoy from "../models/deliveryBoy.model.js";
+import bcrypt from "bcryptjs";
 
 const getApprovedPump = async (userId) => {
-  const pump = await Pump.findOne({ owner: userId, approvalStatus: "approved" });
-  if (!pump) throw new Error("Approved pump not found");
+  const pump = await Pump.findOne({ owner: userId });
+  if (!pump) throw new Error("Pump not found for this account");
+  if (pump.approvalStatus === "pending") throw new Error("Your pump is pending SuperAdmin approval. Please login as SuperAdmin to approve it.");
+  if (pump.approvalStatus === "rejected") throw new Error("Your pump registration has been rejected by SuperAdmin.");
   return pump;
 };
 
@@ -165,4 +169,48 @@ export const getFuelPricesByPumpId = async (pumpId) => {
 export const getMyFuelPrices = async (userId) => {
   const pump = await getApprovedPump(userId);
   return pump.fuelPrices;
+};
+
+// ─── Delivery Boys ────────────────────────────────────────────────────────────
+export const getDeliveryBoys = async (userId) => {
+  const pump = await getApprovedPump(userId);
+  return await DeliveryBoy.find({ pump: pump._id }).sort({ createdAt: -1 });
+};
+
+export const addDeliveryBoy = async (userId, { name, phone, address, password }, aadharPhotoUrl) => {
+  const pump = await getApprovedPump(userId);
+  if (!name || !phone || !address) throw new Error("name, phone, address required");
+  if (!password) throw new Error("Password is required for delivery boy login");
+  if (!aadharPhotoUrl) throw new Error("Aadhar photo upload failed. Please try again.");
+  
+  const hashed = await bcrypt.hash(password, 10);
+  return await DeliveryBoy.create({ pump: pump._id, name, phone, address, password: hashed, aadharPhoto: aadharPhotoUrl });
+};
+
+export const editDeliveryBoy = async (userId, deliveryBoyId, { phone, password }) => {
+  const pump = await getApprovedPump(userId);
+  const boy = await DeliveryBoy.findOne({ _id: deliveryBoyId, pump: pump._id });
+  if (!boy) throw new Error("Delivery boy not found");
+  if (phone) boy.phone = phone;
+  if (password) {
+    boy.password = await bcrypt.hash(password, 10);
+  }
+  await boy.save();
+  return { _id: boy._id, name: boy.name, phone: boy.phone, isActive: boy.isActive };
+};
+
+export const toggleDeliveryBoy = async (userId, deliveryBoyId) => {
+  const pump = await getApprovedPump(userId);
+  const boy = await DeliveryBoy.findOne({ _id: deliveryBoyId, pump: pump._id });
+  if (!boy) throw new Error("Delivery boy not found");
+  boy.isActive = !boy.isActive;
+  await boy.save();
+  return boy;
+};
+
+export const deleteDeliveryBoy = async (userId, deliveryBoyId) => {
+  const pump = await getApprovedPump(userId);
+  const boy = await DeliveryBoy.findOneAndDelete({ _id: deliveryBoyId, pump: pump._id });
+  if (!boy) throw new Error("Delivery boy not found");
+  return { message: "Deleted successfully" };
 };

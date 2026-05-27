@@ -1,8 +1,9 @@
 import {
   registerCustomer, registerPumpAdmin, registerMechanicRole,
   loginWithEmail, loginWithPhone, verifyOTP, switchRole,
-  pumpAdminDirectLogin,
+  pumpAdminDirectLogin, forgotPasswordService, resetPasswordService,
 } from "../services/auth.service.js";
+import { addToBlacklist } from "../utils/tokenBlacklist.js";
 
 export const customerRegisterHandler = async (req, res) => {
   try {
@@ -73,6 +74,30 @@ export const pumpAdminLoginHandler = async (req, res) => {
     res.status(401).json({ success: false, message: err.message });
   }
 };
+
+export const forgotPasswordHandler = async (req, res) => {
+  try {
+    const data = await forgotPasswordService(req.body);
+    res.status(200).json({ success: true, ...data });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+export const resetPasswordHandler = async (req, res) => {
+  try {
+    const data = await resetPasswordService(req.body);
+    res.status(200).json({ success: true, ...data });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+export const logoutHandler = (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1]
+  if (token) addToBlacklist(token)
+  res.status(200).json({ success: true, message: "Logged out successfully" })
+}
 
 export const switchRoleHandler = async (req, res) => {
   try {

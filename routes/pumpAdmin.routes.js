@@ -9,8 +9,10 @@ import {
   handleGetMechanics, handleGetPendingMechanics,
   handleAddInternalMechanic, handleApproveMechanic,
   handleRejectMechanic, handleToggleMechanic,
+  handleToggleMechanicAvailability, handleDeleteMechanic, handleGetMechanicJobs,
   handleGetCustomers, handleToggleCustomerBlock,
   handleGetFuelPrices, handleUpdateFuelPrices,
+  handleGetDeliveryBoys, handleAddDeliveryBoy, handleToggleDeliveryBoy, handleDeleteDeliveryBoy, handleEditDeliveryBoy,
 } from "../controllers/pumpAdmin.controller.js";
 
 const router = Router();
@@ -44,6 +46,9 @@ router.post("/mechanics", mechanicUpload, handleAddInternalMechanic);
 router.patch("/mechanics/:id/approve", handleApproveMechanic);
 router.patch("/mechanics/:id/reject", handleRejectMechanic);
 router.patch("/mechanics/:id/toggle", handleToggleMechanic);
+router.patch("/mechanics/:id/availability", handleToggleMechanicAvailability);
+router.get("/mechanics/:id/jobs", handleGetMechanicJobs);
+router.delete("/mechanics/:id", handleDeleteMechanic);
 
 // ─── Customers ────────────────────────────────────────────────────────────────
 router.get("/customers", handleGetCustomers);
@@ -52,5 +57,12 @@ router.patch("/customers/:id/toggle-block", handleToggleCustomerBlock);
 // ─── Fuel Prices ──────────────────────────────────────────────────────────────
 router.get("/fuel-prices", handleGetFuelPrices);
 router.put("/fuel-prices", handleUpdateFuelPrices);
+
+// ─── Delivery Boys ────────────────────────────────────────────────────────────
+router.get("/delivery-boys", handleGetDeliveryBoys);
+router.post("/delivery-boys", upload.single("aadharPhoto"), handleAddDeliveryBoy);
+router.patch("/delivery-boys/:id/toggle", handleToggleDeliveryBoy);
+router.patch("/delivery-boys/:id/edit", handleEditDeliveryBoy);
+router.delete("/delivery-boys/:id", handleDeleteDeliveryBoy);
 
 export default router;

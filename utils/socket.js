@@ -5,15 +5,19 @@ let io;
 export const initSocket = (httpServer) => {
   io = new Server(httpServer, {
     cors: {
-      origin: process.env.CLIENT_URL || "*",
+      origin: "*",
       methods: ["GET", "POST"],
     },
+    transports: ["websocket", "polling"],
   });
 
   io.on("connection", (socket) => {
+    console.log(`[Socket] Connected: ${socket.id}`);
+
     socket.on("join", (id) => {
       if (!id) return;
       socket.join(id.toString());
+      console.log(`[Socket] ${socket.id} joined room: ${id}`);
     });
 
     socket.on("send-location", (data) => {
@@ -32,8 +36,8 @@ export const initSocket = (httpServer) => {
       socket.join(`booking:${bookingId}`);
     });
 
-    socket.on("disconnect", () => {
-      io.emit("user-disconnected", socket.id);
+    socket.on("disconnect", (reason) => {
+      console.log(`[Socket] Disconnected: ${socket.id} — ${reason}`);
     });
   });
 
@@ -47,13 +51,17 @@ export const getIO = () => {
 
 // ─── Notify a single room ─────────────────────────────────────────────────────
 export const notify = (roomId, event, data) => {
-  try { getIO().to(roomId.toString()).emit(event, data); } catch (_) {}
+  try {
+    console.log(`[Socket] notify → room:${roomId} event:${event}`);
+    getIO().to(roomId.toString()).emit(event, data);
+  } catch (_) {}
 };
 
 // ─── Notify multiple pump owners ─────────────────────────────────────────────
 export const notifyPumpOwners = (ownerIds, event, data) => {
   try {
     const io = getIO();
+    console.log(`[Socket] notifyPumpOwners → ${ownerIds.length} owners, event:${event}`);
     ownerIds.forEach((id) => io.to(id.toString()).emit(event, data));
   } catch (_) {}
 };

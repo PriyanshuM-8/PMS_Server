@@ -2,7 +2,8 @@ import {
   getDashboardStats, getSystemChart,
   getPendingRequests, getAllPumps, getPumpById,
   approvePump, rejectPump, togglePumpStatus, deletePump,
-  getAllUsers, toggleUserStatus,
+  getAllUsers, toggleUserStatus, getUserDetails, getAllBookings, getAllMechanics, approvePumpAdmin,
+  withdrawSuperAdminEarnings,
 } from "../services/superAdmin.services.js";
 
 export const handleGetDashboard = async (req, res) => {
@@ -87,6 +88,13 @@ export const handleDeletePump = async (req, res) => {
   }
 };
 
+export const handleApprovePumpAdmin = async (req, res) => {
+  try {
+    const data = await approvePumpAdmin(req.params.id);
+    res.status(200).json({ success: true, message: "Pump Admin approved successfully", data });
+  } catch (err) { res.status(400).json({ success: false, message: err.message }); }
+};
+
 export const handleGetAllUsers = async (req, res) => {
   try {
     const data = await getAllUsers(req.query.role);
@@ -100,6 +108,40 @@ export const handleToggleUserStatus = async (req, res) => {
   try {
     const data = await toggleUserStatus(req.params.id);
     res.status(200).json({ success: true, message: `User is now ${data.isActive ? "active" : "inactive"}`, data });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+export const handleGetUserDetails = async (req, res) => {
+  try {
+    const data = await getUserDetails(req.params.id);
+    res.status(200).json({ success: true, data });
+  } catch (err) {
+    res.status(404).json({ success: false, message: err.message });
+  }
+};
+
+export const handleGetAllMechanics = async (req, res) => {
+  try {
+    const data = await getAllMechanics();
+    res.status(200).json({ success: true, count: data.length, data });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+};
+
+export const handleGetAllBookings = async (req, res) => {
+  try {
+    const data = await getAllBookings(req.query);
+    res.status(200).json({ success: true, ...data });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const handleWithdrawEarnings = async (req, res) => {
+  try {
+    const data = await withdrawSuperAdminEarnings(req.user.id);
+    res.status(200).json({ success: true, message: "Amount withdrawn successfully to bank account", data });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }

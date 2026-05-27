@@ -5,9 +5,11 @@ const bookingSchema = new mongoose.Schema(
     customer: { type: mongoose.Schema.Types.ObjectId, ref: "Customer", required: true },
     pump:     { type: mongoose.Schema.Types.ObjectId, ref: "Pump" },
     mechanic: { type: mongoose.Schema.Types.ObjectId, ref: "Mechanic" },
+    deliveryBoy: { type: mongoose.Schema.Types.ObjectId, ref: "DeliveryBoy" },
 
     // All pumps within 5km that were notified — first to accept gets the booking
     notifiedPumps: [{ type: mongoose.Schema.Types.ObjectId, ref: "Pump" }],
+    notifiedMechanics: [{ type: mongoose.Schema.Types.ObjectId, ref: "Mechanic" }],
 
     serviceType: { type: String, enum: ["fuel", "mechanic"], required: true },
 
@@ -18,8 +20,10 @@ const bookingSchema = new mongoose.Schema(
 
     workDetails: {
       description: String,
+      vehicleName: String,
       partsChanged: [{ partName: String, price: Number }],
-      labourCharge: Number,
+      labourCharge: { type: Number, default: 0 },
+      totalAmount:  { type: Number, default: 0 },
     },
 
     address: {
@@ -32,7 +36,7 @@ const bookingSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "accepted", "assigned", "in_progress", "completed", "cancelled"],
+      enum: ["pending", "accepted", "assigned", "in_progress", "reached", "payment_pending", "mechanic_payment_pending", "completed", "cancelled"],
       default: "pending",
     },
 
@@ -52,11 +56,11 @@ const bookingSchema = new mongoose.Schema(
     priceBreakdown: {
       fuelCost:     { type: Number, default: 0 },
       deliveryFee:  { type: Number, default: 0 },
-      platformFee:  { type: Number, default: 10 },
+      platformFee:  { type: Number, default: 0 },
       total:        { type: Number, default: 0 },
     },
     paymentStatus: { type: String, enum: ["pending", "paid"], default: "pending" },
-    paymentMethod: { type: String, enum: ["online"] },
+    paymentMethod: { type: String, enum: ["online", "cash", "upi"] },
     isRated: { type: Boolean, default: false },
     rating: { type: Number, min: 1, max: 5, default: null },
     feedback: { type: String, default: '' },

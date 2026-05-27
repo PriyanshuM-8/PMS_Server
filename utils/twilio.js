@@ -24,11 +24,10 @@ const formatPhone = (phone) => {
   return `+${cleaned}`;
 };
 
-// Send OTP via Twilio Verify
+// ─── Send OTP via Twilio Verify ─────────────────────────────────────────────
 export const sendOTP = async (phone) => {
   const formatted = formatPhone(phone);
   console.log(`[Twilio] Sending OTP to: ${formatted}`);
-  console.log(`[Twilio] Using SERVICE_SID: ${SERVICE_SID}`);
 
   try {
     const verification = await client.verify.v2
@@ -36,17 +35,13 @@ export const sendOTP = async (phone) => {
       .verifications.create({
         to: formatted,
         channel: "sms",
-        customMessage: "Your PetroCareX OTP is: {{code}}. Valid for 10 minutes. Do not share with anyone.",
+        // customMessage removed — not allowed on free/trial plan (error 60204)
       });
 
-    console.log(`[Twilio] OTP sent | status: ${verification.status} | sid: ${verification.sid}`);
+    console.log(`[Twilio] OTP sent | status: ${verification.status}`);
     return { success: true };
   } catch (err) {
-    console.error(`[Twilio] sendOTP FAILED:`);
-    console.error(`  code: ${err.code}`);
-    console.error(`  message: ${err.message}`);
-    console.error(`  status: ${err.status}`);
-    console.error(`  moreInfo: ${err.moreInfo}`);
+    console.error(`[Twilio] sendOTP FAILED: ${err.code} - ${err.message}`);
     throw new Error(`SMS failed (${err.code}): ${err.message}`);
   }
 };

@@ -14,6 +14,7 @@ const mechanicSchema = new mongoose.Schema(
     aadharPhoto: { type: String, required: true },
 
     type: { type: String, enum: ["internal", "external"], required: true },
+    upiId: { type: String, default: "" },
 
     // Internal mechanic — single pump
     pump: { type: mongoose.Schema.Types.ObjectId, ref: "Pump" },
@@ -60,6 +61,14 @@ const mechanicSchema = new mongoose.Schema(
     status: { type: String, enum: ["active", "inactive"], default: "active" },
     isVerified: { type: Boolean, default: false },
     isDeleted: { type: Boolean, default: false },
+
+    // Wallet & Platform Subscription
+    walletBalance: { type: Number, default: 0 },
+    lastPlatformFeeDeduction: { type: Date, default: null },
+    freeTrialEndsAt: { 
+      type: Date, 
+      default: () => new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) 
+    },
 
     addedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },

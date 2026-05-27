@@ -3,6 +3,7 @@ import {
   getDashboardStats, getBookingChart,
   getMyCustomers, toggleCustomerBlock,
   updateFuelPrices, getMyFuelPrices,
+  getDeliveryBoys, addDeliveryBoy, editDeliveryBoy, toggleDeliveryBoy, deleteDeliveryBoy,
 } from "../services/pumpAdmin.services.js";
 
 import {
@@ -14,6 +15,7 @@ import {
   getMyMechanics, getPendingExternalMechanics,
   addInternalMechanic, approveExternalMechanic,
   rejectExternalMechanic, toggleMechanicStatus,
+  toggleMechanicAvailability, deleteInternalMechanic, getMechanicJobHistory,
 } from "../services/mechanic.services.js";
 
 // ─── Profile & Pump ───────────────────────────────────────────────────────────
@@ -125,6 +127,27 @@ export const handleToggleMechanic = async (req, res) => {
   } catch (err) { res.status(400).json({ success: false, message: err.message }); }
 };
 
+export const handleToggleMechanicAvailability = async (req, res) => {
+  try {
+    const data = await toggleMechanicAvailability(req.params.id, req.user.id);
+    res.status(200).json({ success: true, message: `Mechanic is now ${data.isAvailable ? 'available' : 'unavailable'}`, data });
+  } catch (err) { res.status(400).json({ success: false, message: err.message }); }
+};
+
+export const handleDeleteMechanic = async (req, res) => {
+  try {
+    const data = await deleteInternalMechanic(req.params.id, req.user.id);
+    res.status(200).json({ success: true, ...data });
+  } catch (err) { res.status(400).json({ success: false, message: err.message }); }
+};
+
+export const handleGetMechanicJobs = async (req, res) => {
+  try {
+    const data = await getMechanicJobHistory(req.params.id, req.user.id);
+    res.status(200).json({ success: true, data });
+  } catch (err) { res.status(400).json({ success: false, message: err.message }); }
+};
+
 // ─── Customers ────────────────────────────────────────────────────────────────
 export const handleGetCustomers = async (req, res) => {
   try {
@@ -150,5 +173,45 @@ export const handleUpdateFuelPrices = async (req, res) => {
   try {
     const data = await updateFuelPrices(req.user.id, req.body);
     res.status(200).json({ success: true, message: "Fuel prices updated", data });
+  } catch (err) { res.status(400).json({ success: false, message: err.message }); }
+};
+
+// ─── Delivery Boys ────────────────────────────────────────────────────────────
+export const handleGetDeliveryBoys = async (req, res) => {
+  try {
+    const data = await getDeliveryBoys(req.user.id);
+    res.status(200).json({ success: true, count: data.length, data });
+  } catch (err) { res.status(400).json({ success: false, message: err.message }); }
+};
+
+export const handleAddDeliveryBoy = async (req, res) => {
+  try {
+    const aadharUrl = req.file?.secure_url || req.file?.path;
+    const data = await addDeliveryBoy(req.user.id, req.body, aadharUrl);
+    res.status(201).json({ success: true, message: "Delivery boy added", data });
+  } catch (err) {
+    console.error("[AddDeliveryBoy] Error:", err.message);
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+export const handleEditDeliveryBoy = async (req, res) => {
+  try {
+    const data = await editDeliveryBoy(req.user.id, req.params.id, req.body);
+    res.status(200).json({ success: true, message: "Delivery boy updated", data });
+  } catch (err) { res.status(400).json({ success: false, message: err.message }); }
+};
+
+export const handleToggleDeliveryBoy = async (req, res) => {
+  try {
+    const data = await toggleDeliveryBoy(req.user.id, req.params.id);
+    res.status(200).json({ success: true, message: `Delivery boy is now ${data.isActive ? 'active' : 'inactive'}`, data });
+  } catch (err) { res.status(400).json({ success: false, message: err.message }); }
+};
+
+export const handleDeleteDeliveryBoy = async (req, res) => {
+  try {
+    const data = await deleteDeliveryBoy(req.user.id, req.params.id);
+    res.status(200).json({ success: true, ...data });
   } catch (err) { res.status(400).json({ success: false, message: err.message }); }
 };

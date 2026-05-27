@@ -25,6 +25,9 @@ const userSchema = new mongoose.Schema(
     pendingPhone: { type: String, default: null },
     otp: { type: String },
     otpExpiry: { type: Date },
+
+    // SuperAdmin Wallet Earnings
+    superAdminEarnings: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
