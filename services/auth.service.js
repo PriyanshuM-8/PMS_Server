@@ -182,7 +182,7 @@ export const pumpAdminDirectLogin = async ({ email, password }) => {
   await User.findByIdAndUpdate(user._id, { otp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
   await sendOTPEmail(user.email, user.name, otp);
 
-  return { message: "OTP sent to your email.", identifier: email };
+  return { message: "OTP sent to your email.", identifier: email, devOtp: otp };
 };
 
 // Forgot Password — send OTP
@@ -229,7 +229,7 @@ export const forgotPasswordService = async ({ email, phone }) => {
     const otp = generateOTP();
     await User.findByIdAndUpdate(user._id, { otp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
     await sendOTPEmail(user.email, user.name, otp);
-    return { message: "OTP sent to your email.", identifier, method };
+    return { message: "OTP sent to your email.", identifier, method, devOtp: otp };
   } else if (method === "sms") {
     const demoOtp = generateOTP();
     await User.findByIdAndUpdate(user._id, { otp: demoOtp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
