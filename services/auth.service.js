@@ -307,11 +307,24 @@ export const loginWithEmail = async ({ email, password }) => {
 };
 
 // Phone Login — Twilio Verify SMS OTP
-export const loginWithPhone = async ({ phone }) => {
+export const loginWithPhone = async ({ phone, requestedRole }) => {
   const cleaned = phone.toString().replace(/\D/g, "");
   if (!/^[6-9]\d{9}$/.test(cleaned)) throw new Error("Invalid phone number");
 
-  // Mechanic check first
+  if (requestedRole === "mechanic") {
+    const mechanic = await Mechanic.findOne({ phone: cleaned, isDeleted: false });
+    if (!mechanic) throw new Error("This mobile number is not registered as a Mechanic. Please register first.");
+    
+    const user = await User.findById(mechanic.user);
+    if (!user) throw new Error("Account not found. Please register first.");
+    if (!user.isActive) throw new Error("Account is deactivated. Contact support.");
+    
+    const demoOtp = generateOTP();
+    await User.findByIdAndUpdate(user._id, { otp: demoOtp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
+    return { message: "Demo OTP generated for mobile number", otpMethod: "sms", identifier: cleaned, devOtp: demoOtp };
+  }
+
+  // Fallback / Customer check
   const mechanic = await Mechanic.findOne({ phone: cleaned, isDeleted: false });
   if (mechanic) {
     let user;
@@ -362,7 +375,7 @@ export const loginWithPhone = async ({ phone }) => {
 };
 
 // Verify OTP — email (DB check) or sms (Twilio Verify check)
-export const verifyOTP = async ({ identifier, otp, method }) => {
+export const verifyOTP = async ({ identifier, otp, method, requestedRole }) => {
   let user;
 
   if (method === "sms") {
@@ -391,23 +404,29 @@ export const verifyOTP = async ({ identifier, otp, method }) => {
   if (!user) throw new Error("User not found");
   if (!user.isActive) throw new Error("Account is deactivated");
 
-  // Mechanic role check
-  if (user.roles.includes("mechanic") && !user.roles.includes("pumpAdmin")) {
-    user.activeRole = "mechanic";
+  // Allow requestedRole override if valid
+  if (requestedRole && user.roles.includes(requestedRole)) {
+    user.activeRole = requestedRole;
     await user.save();
-    const token = generateToken({ id: user._id, roles: user.roles, activeRole: "mechanic" });
-    return { token, user: userResponse(user) };
+  } else {
+    // Fallbacks if no requestedRole is passed
+    if (user.roles.includes("mechanic") && !user.roles.includes("pumpAdmin")) {
+      user.activeRole = "mechanic";
+      await user.save();
+      const token = generateToken({ id: user._id, roles: user.roles, activeRole: "mechanic" });
+      return { token, user: userResponse(user) };
+    }
+
+    if (user.roles.includes("pumpAdmin") && user.activeRole !== "pumpAdmin") {
+      user.activeRole = "pumpAdmin";
+      await user.save();
+    }
   }
 
   if (user.activeRole === "pumpAdmin") {
     const pump = await Pump.findOne({ owner: user._id });
     if (pump?.approvalStatus === "pending") throw new Error("Your pump is pending SuperAdmin approval");
     if (pump?.approvalStatus === "rejected") throw new Error("Your pump has been rejected");
-  }
-
-  if (user.roles.includes("pumpAdmin") && user.activeRole !== "pumpAdmin") {
-    user.activeRole = "pumpAdmin";
-    await user.save();
   }
 
   const token = generateToken({ id: user._id, roles: user.roles, activeRole: user.activeRole });
