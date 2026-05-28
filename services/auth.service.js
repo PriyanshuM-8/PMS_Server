@@ -180,9 +180,9 @@ export const pumpAdminDirectLogin = async ({ email, password }) => {
 
   const otp = generateOTP();
   await User.findByIdAndUpdate(user._id, { otp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
-  await sendOTPEmail(user.email, user.name, otp);
+  // await sendOTPEmail(user.email, user.name, otp); // Bypassed for instant Test OTP
 
-  return { message: "OTP sent to your email.", identifier: email, devOtp: otp };
+  return { message: "Test OTP generated instantly.", identifier: email, devOtp: otp };
 };
 
 // Forgot Password — send OTP
@@ -228,8 +228,8 @@ export const forgotPasswordService = async ({ email, phone }) => {
   if (method === "email") {
     const otp = generateOTP();
     await User.findByIdAndUpdate(user._id, { otp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
-    await sendOTPEmail(user.email, user.name, otp);
-    return { message: "OTP sent to your email.", identifier, method, devOtp: otp };
+    // await sendOTPEmail(user.email, user.name, otp); // Bypassed for instant Test OTP
+    return { message: "Test OTP generated instantly.", identifier, method, devOtp: otp };
   } else if (method === "sms") {
     const demoOtp = generateOTP();
     await User.findByIdAndUpdate(user._id, { otp: demoOtp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
@@ -301,9 +301,9 @@ export const loginWithEmail = async ({ email, password }) => {
 
   const otp = generateOTP();
   await User.findByIdAndUpdate(user._id, { otp, otpExpiry: new Date(Date.now() + 10 * 60 * 1000) });
-  await sendOTPEmail(user.email, user.name, otp);
+  // await sendOTPEmail(user.email, user.name, otp); // Bypassed for instant Test OTP
 
-  return { message: "OTP sent to your email.", otpMethod: "email", identifier: email, roles: user.roles };
+  return { message: "Test OTP generated instantly.", otpMethod: "email", identifier: email, roles: user.roles, devOtp: otp };
 };
 
 // Phone Login — Twilio Verify SMS OTP

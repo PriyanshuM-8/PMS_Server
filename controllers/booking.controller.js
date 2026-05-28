@@ -111,7 +111,7 @@ export const handleConfirmPayment = async (req, res) => {
 
 export const handleCompleteJobByAdmin = async (req, res) => {
   try {
-    const data = await completeJobByAdmin(req.user.id, req.params.id, req.body.otp, req.body.workDetails);
+    const data = await completeJobByAdmin(req.user.id, req.params.id, req.body.workDetails);
     res.status(200).json({ success: true, message: "Job completed", data });
   } catch (err) { res.status(400).json({ success: false, message: err.message }); }
 };

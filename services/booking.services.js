@@ -519,8 +519,8 @@ export const getFreeTrialMessage = (userDoc) => {
   return `You have ${diffDays} day(s) left in your free demo.`;
 };
 
-// PumpAdmin: Complete Job via OTP
-export const completeJobByAdmin = async (pumpAdminId, bookingId, otp, workDetails) => {
+// PumpAdmin: Complete Job (OTP removed)
+export const completeJobByAdmin = async (pumpAdminId, bookingId, workDetails) => {
   const pump = await Pump.findOne({ owner: pumpAdminId, approvalStatus: "approved" });
   if (!pump) throw new Error("Pump not found");
 
@@ -529,7 +529,6 @@ export const completeJobByAdmin = async (pumpAdminId, bookingId, otp, workDetail
     status: { $in: ["in_progress", "payment_pending"] },
   });
   if (!booking) throw new Error("Booking not found or not in progress");
-  if (booking.completionOTP !== otp) throw new Error("Invalid OTP");
 
   // Fuel booking: amount already set. Mechanic booking: parts + labour
   let totalAmount = booking.amount;
