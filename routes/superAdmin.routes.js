@@ -4,7 +4,7 @@ import {
   handleGetDashboard, handleGetChart,
   handleGetPendingRequests, handleGetAllPumps, handleGetPumpById,
   handleApprovePump, handleRejectPump, handleToggleStatus, handleDeletePump,
-  handleGetAllUsers, handleToggleUserStatus, handleGetUserDetails, handleGetAllMechanics, handleGetAllBookings, handleApprovePumpAdmin, handleWithdrawEarnings,
+  handleGetAllUsers, handleToggleUserStatus, handleGetUserDetails, handleGetAllMechanics, handleGetAllBookings, handleApprovePumpAdmin, handleWithdrawEarnings, handleUpdateAccountDetails, handleGetAccountDetails
 } from "../controllers/superAdmin.controller.js";
 
 const router = Router();
@@ -14,6 +14,8 @@ router.use(protect, authorize("superAdmin"));
 router.get("/dashboard", handleGetDashboard);
 router.get("/dashboard/chart", handleGetChart);
 router.post("/withdraw", handleWithdrawEarnings);
+router.get("/account", handleGetAccountDetails);
+router.patch("/account", handleUpdateAccountDetails);
 
 // ─── Pumps ────────────────────────────────────────────────────────────────────
 router.get("/pumps/pending", handleGetPendingRequests);

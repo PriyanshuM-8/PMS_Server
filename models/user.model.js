@@ -27,7 +27,16 @@ const userSchema = new mongoose.Schema(
     otpExpiry: { type: Date },
 
     // SuperAdmin Wallet Earnings
-    superAdminEarnings: { type: Number, default: 0 },
+    superAdminEarningsFuel: { type: Number, default: 0 },
+    superAdminEarningsMechanic: { type: Number, default: 0 },
+
+    // SuperAdmin Account Details
+    accountDetails: {
+      bankName: { type: String, default: "" },
+      accountNumber: { type: String, default: "" },
+      ifscCode: { type: String, default: "" },
+      accountHolderName: { type: String, default: "" }
+    },
   },
   { timestamps: true }
 );

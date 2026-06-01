@@ -18,7 +18,7 @@ export const getDashboardStats = async () => {
     totalPumps, pendingPumps, approvedPumps, rejectedPumps,
     totalCustomers, totalMechanics,
     totalBookings, bookingsToday,
-    revenueToday, revenueMonth, revenueTotal, superAdminWallet
+    revenueToday, revenueMonth, revenueTotal, superAdminWallet, superAdminUser
   ] = await Promise.all([
     Pump.countDocuments(),
     Pump.countDocuments({ approvalStatus: "pending" }),
@@ -42,8 +42,14 @@ export const getDashboardStats = async () => {
     ]),
     User.aggregate([
       { $match: { roles: "superAdmin" } },
-      { $group: { _id: null, total: { $sum: "$superAdminEarnings" } } }
-    ])
+      { $group: { 
+          _id: null, 
+          totalFuel: { $sum: "$superAdminEarningsFuel" },
+          totalMechanic: { $sum: "$superAdminEarningsMechanic" }
+        } 
+      }
+    ]),
+    User.findOne({ roles: "superAdmin" }).select("accountDetails")
   ]);
 
   return {
@@ -53,7 +59,10 @@ export const getDashboardStats = async () => {
     revenueToday: revenueToday[0]?.total || 0,
     revenueMonth: revenueMonth[0]?.total || 0,
     revenueTotal: revenueTotal[0]?.total || 0,
-    superAdminWallet: superAdminWallet[0]?.total || 0,
+    superAdminEarningsFuel: superAdminWallet[0]?.totalFuel || 0,
+    superAdminEarningsMechanic: superAdminWallet[0]?.totalMechanic || 0,
+    superAdminWallet: (superAdminWallet[0]?.totalFuel || 0) + (superAdminWallet[0]?.totalMechanic || 0),
+    accountDetails: superAdminUser?.accountDetails || null,
   };
 };
 
@@ -262,14 +271,47 @@ export const withdrawSuperAdminEarnings = async (userId) => {
     throw new Error("Unauthorized");
   }
 
-  const amount = user.superAdminEarnings || 0;
-  if (amount <= 0) {
+  const fuelAmount = user.superAdminEarningsFuel || 0;
+  const mechanicAmount = user.superAdminEarningsMechanic || 0;
+  const totalAmount = fuelAmount + mechanicAmount;
+
+  if (totalAmount <= 0) {
     throw new Error("No earnings to withdraw.");
   }
 
+  if (!user.accountDetails || !user.accountDetails.accountNumber) {
+    throw new Error("Please add your bank account details before withdrawing.");
+  }
+
   // Reset earnings to 0
-  user.superAdminEarnings = 0;
+  user.superAdminEarningsFuel = 0;
+  user.superAdminEarningsMechanic = 0;
   await user.save();
 
-  return { withdrawnAmount: amount, newBalance: 0 };
+  return { withdrawnAmount: totalAmount, newBalance: 0, accountNumber: user.accountDetails.accountNumber };
+};
+
+export const updateAccountDetails = async (userId, accountData) => {
+  const user = await User.findById(userId);
+  if (!user || !user.roles.includes("superAdmin")) {
+    throw new Error("Unauthorized");
+  }
+
+  user.accountDetails = {
+    bankName: accountData.bankName || user.accountDetails?.bankName,
+    accountNumber: accountData.accountNumber || user.accountDetails?.accountNumber,
+    ifscCode: accountData.ifscCode || user.accountDetails?.ifscCode,
+    accountHolderName: accountData.accountHolderName || user.accountDetails?.accountHolderName,
+  };
+
+  await user.save();
+  return user.accountDetails;
+};
+
+export const getAccountDetails = async (userId) => {
+  const user = await User.findById(userId).select("accountDetails roles");
+  if (!user || !user.roles.includes("superAdmin")) {
+    throw new Error("Unauthorized");
+  }
+  return user.accountDetails;
 };

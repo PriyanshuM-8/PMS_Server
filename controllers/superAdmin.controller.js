@@ -3,7 +3,7 @@ import {
   getPendingRequests, getAllPumps, getPumpById,
   approvePump, rejectPump, togglePumpStatus, deletePump,
   getAllUsers, toggleUserStatus, getUserDetails, getAllBookings, getAllMechanics, approvePumpAdmin,
-  withdrawSuperAdminEarnings,
+  withdrawSuperAdminEarnings, updateAccountDetails, getAccountDetails
 } from "../services/superAdmin.services.js";
 
 export const handleGetDashboard = async (req, res) => {
@@ -142,6 +142,24 @@ export const handleWithdrawEarnings = async (req, res) => {
   try {
     const data = await withdrawSuperAdminEarnings(req.user.id);
     res.status(200).json({ success: true, message: "Amount withdrawn successfully to bank account", data });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+export const handleUpdateAccountDetails = async (req, res) => {
+  try {
+    const data = await updateAccountDetails(req.user.id, req.body);
+    res.status(200).json({ success: true, message: "Account details updated successfully", data });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+export const handleGetAccountDetails = async (req, res) => {
+  try {
+    const data = await getAccountDetails(req.user.id);
+    res.status(200).json({ success: true, data });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }

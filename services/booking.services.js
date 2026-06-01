@@ -142,12 +142,31 @@ export const cancelBooking = async (userId, bookingId) => {
   if (!customer) throw new Error("Profile not found");
   const booking = await Booking.findOne({ _id: bookingId, customer: customer._id });
   if (!booking) throw new Error("Booking not found");
-  if (!["pending", "accepted"].includes(booking.status))
+  if (["completed", "cancelled"].includes(booking.status))
     throw new Error("Booking cannot be cancelled at this stage");
 
   booking.status = "cancelled";
   addTimeline(booking, "cancelled", "Cancelled by customer");
   await booking.save();
+
+  // If mechanic was assigned, free them up and notify
+  if (booking.mechanic) {
+    const mechanic = await Mechanic.findById(booking.mechanic);
+    if (mechanic) {
+      mechanic.currentStatus = "idle";
+      mechanic.isAvailable = true;
+      await mechanic.save();
+      if (mechanic.user) {
+        notify(mechanic.user.toString(), "booking_cancelled", { bookingId: booking._id });
+        notify(mechanic.user.toString(), "booking:update", { bookingId: booking._id, status: "cancelled" });
+      }
+    }
+  }
+
+  // If delivery boy was assigned, notify
+  if (booking.deliveryBoy) {
+    notify(booking.deliveryBoy.toString(), "booking_cancelled", { bookingId: booking._id });
+  }
 
   // Agar pump assigned hai toh notify karo
   if (booking.pump) {
@@ -226,7 +245,7 @@ export const getPumpAllBookings = async (pumpAdminId, statusFilter) => {
 // Helper: Handle Platform Fee — ₹20/day on first booking (pump admin se)
 const PUMP_DAILY_FEE = 20;
 
-const handlePlatformFee = async (userDoc) => {
+const handlePlatformFee = async (userDoc, source) => {
   // Free trial active hai toh kuch nahi
   if (userDoc.freeTrialEndsAt && new Date() < new Date(userDoc.freeTrialEndsAt)) {
     return;
@@ -249,9 +268,11 @@ const handlePlatformFee = async (userDoc) => {
   userDoc.lastPlatformFeeDeduction = now;
   await userDoc.save();
 
+  const incrementField = source === "fuel" ? "superAdminEarningsFuel" : "superAdminEarningsMechanic";
+
   await User.findOneAndUpdate(
     { roles: "superAdmin" },
-    { $inc: { superAdminEarnings: PUMP_DAILY_FEE } },
+    { $inc: { [incrementField]: PUMP_DAILY_FEE } },
     { sort: { createdAt: 1 } }
   );
 };
@@ -268,7 +289,7 @@ export const acceptBooking = async (pumpAdminId, bookingId, estimatedArrival) =>
   });
   if (!booking) throw new Error("Booking not found, already accepted, or not in your area");
 
-  await handlePlatformFee(pump);
+  await handlePlatformFee(pump, "fuel");
 
   booking.pump = pump._id;
   booking.status = "accepted";
@@ -588,7 +609,7 @@ export const mechanicAcceptBooking = async (mechanicId, bookingId) => {
   const booking = await Booking.findOne({ _id: bookingId, status: "pending", serviceType: "mechanic" });
   if (!booking) throw new Error("Booking not found or already accepted by someone else");
 
-  await handlePlatformFee(mechanic);
+  await handlePlatformFee(mechanic, "mechanic");
 
   const otp = generateOTP();
   booking.mechanic = mechanic._id;
